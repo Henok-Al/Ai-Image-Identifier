@@ -33,7 +33,6 @@ export const MainContainer = () => {
         imageParts,
       ]);
       const response = await result.response;
-      console.log(response);
       const text = response
         .text()
         .trim()
@@ -44,7 +43,6 @@ export const MainContainer = () => {
         .replace(/\n\s*\n/g, "\n");
       setResult(text);
       generateKeywords(text);
-      console.log(text);
       await generateRelatedQuestions(text);
     } catch (error) {
       console.error("Error identifying image:", error);
@@ -167,9 +165,46 @@ export const MainContainer = () => {
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-150 ease-in-out disabled:opacity-30 disabled:cursor-not-allowed font-medium text-lg"
             disabled={!image || loading}
           >
-            {loading ? "Identifying..." : "Identifying Image"}
+            {loading ? "Identifying..." : "Identify Image"}
           </button>
         </div>
+        {result && (
+          <div className="bg-blue-50 p-8 border-t border-blue-100">
+            <h3 className="text-2xl font-bold text-blue-800 mb-4">
+              Image Information:
+            </h3>
+            <div className="prose prose-blue max-w-none">
+              {result.split("\n").map((line, index) => {
+                if (
+                  line.startsWith("Important Information:") ||
+                  line.startsWith("Other Information:")
+                ) {
+                  return (
+                    <h4
+                      key={index}
+                      className="text-xl font-semibold mt-4 mb-2 text-blue-700"
+                    >
+                      {line}
+                    </h4>
+                  );
+                } else if (line.match(/^\d+\./) || line.startsWith("-")) {
+                  return (
+                    <li key={index} className="ml-4 mb-2 text-gray-700">
+                      {line}
+                    </li>
+                  );
+                } else if (line.trim() !== "") {
+                  return (
+                    <p key={index} className="mb-2 text-gray-800">
+                      {line}
+                    </p>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
