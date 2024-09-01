@@ -1,20 +1,129 @@
 "use client";
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import Image from "next/image";
 import React, { useState } from "react";
 
 export const MainContainer = () => {
   const [image, setImage] = useState<File | null>(null);
+  const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [relatedQuestions, setRelatedQuestions] = useState<string[]>([]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // it checks if e.target.files exists and if there is at least one file selected
     if (e.target.files && e.target.files[0]) {
       setImage(e.target.files[0]);
     }
   };
 
-  const IdentifyImage = () => {};
+  const identifyImage = async (additionalPrompt: string = "") => {
+    if (!image) return;
+
+    setLoading(true);
+    const genAI = new GoogleGenerativeAI(
+      process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY!
+    );
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    try {
+      const imageParts = await fileToGenerativePart(image);
+      const result = await model.generateContent([
+        `Identify this image and provide its name and important information including a brief explanation about that image. ${additionalPrompt}`,
+        imageParts,
+      ]);
+      const response = await result.response;
+      console.log(response);
+      const text = response
+        .text()
+        .trim()
+        .replace(/```/g, "")
+        .replace(/\*\*/g, "")
+        .replace(/\*/g, "")
+        .replace(/-\s*/g, "")
+        .replace(/\n\s*\n/g, "\n");
+      setResult(text);
+      generateKeywords(text);
+      console.log(text);
+      await generateRelatedQuestions(text);
+    } catch (error) {
+      console.error("Error identifying image:", error);
+      if (error instanceof Error) {
+        setResult(`Error identifying image: ${error.message}`);
+      } else {
+        setResult("An unknown error occurred while identifying the image.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateKeywords = (text: string) => {
+    const words = text.split(/\s+/);
+    const keywordSet = new Set<string>();
+    words.forEach((word) => {
+      if (
+        word.length > 4 &&
+        !["this", "that", "with", "from", "have"].includes(word.toLowerCase())
+      ) {
+        keywordSet.add(word);
+      }
+    });
+    setKeywords(Array.from(keywordSet).slice(0, 5));
+  };
+
+  const regenerateContent = (keyword: string) => {
+    identifyImage(`Focus more on aspects related to "${keyword}".`);
+  };
+
+  const generateRelatedQuestions = async (text: string) => {
+    const genAI = new GoogleGenerativeAI(
+      process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY!
+    );
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    try {
+      const result = await model.generateContent([
+        `Based on the following information about an image, generate 5 related questions that someone might ask to learn more about the subject:
+
+        ${text}
+
+        Format the output as a simple list of questions, one per line.`,
+      ]);
+      const response = await result.response;
+      const questions = response.text().trim().split("\n");
+      setRelatedQuestions(questions);
+    } catch (error) {
+      console.error("Error generating related questions:", error);
+      setRelatedQuestions([]);
+    }
+  };
+
+  const askRelatedQuestion = (question: string) => {
+    identifyImage(
+      `Answer the following question about the image: "${question}"`
+    );
+  };
+
+  async function fileToGenerativePart(file: File): Promise<{
+    inlineData: { data: string; mimeType: string };
+  }> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        const base64Content = base64data.split(",")[1];
+        resolve({
+          inlineData: {
+            data: base64Content,
+            mimeType: file.type,
+          },
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -54,7 +163,7 @@ export const MainContainer = () => {
 
           <button
             type="button"
-            onClick={() => IdentifyImage()}
+            onClick={() => identifyImage()}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-150 ease-in-out disabled:opacity-30 disabled:cursor-not-allowed font-medium text-lg"
             disabled={!image || loading}
           >
